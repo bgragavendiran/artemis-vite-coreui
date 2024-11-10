@@ -18,45 +18,57 @@ import {
   CFormInput,
 } from '@coreui/react'
 import axios from 'axios'
-import { db } from 'src/firebase' // Assuming you have Firebase setup
+import { db, auth } from 'src/firebase' // Ensure Firebase auth is configured
 import { ref, get, child } from 'firebase/database'
+import { onAuthStateChanged } from 'firebase/auth'
 
 const Dashboard = () => {
   const [plants, setPlants] = useState([])
   const [modalVisible, setModalVisible] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [inferenceResult, setInferenceResult] = useState(null)
+  const [firebaseUid, setFirebaseUid] = useState('')
 
   useEffect(() => {
-    const fetchPlants = async () => {
-      const dbRef = ref(db)
-      try {
-        const snapshot = await get(child(dbRef, `images`))
-        if (snapshot.exists()) {
-          const data = snapshot.val()
-          const plantData = Object.keys(data).map((plantName) => {
-            const dates = Object.keys(data[plantName]).map((dateTime) => ({
-              dateTime,
-              images: Object.values(data[plantName][dateTime]).flatMap((folder) =>
-                Object.values(folder)
-              ),
-              totalFlowers: Object.values(data[plantName][dateTime]).flatMap((folder) =>
-                Object.values(folder)
-              ).reduce((total, img) => total + (img.inference_count || 0), 0),
-            }))
-            const overallFlowerCount = dates.reduce((total, date) => total + date.totalFlowers, 0)
-            return { name: plantName, dates, overallFlowerCount }
-          })
-          setPlants(plantData)
-        } else {
-          console.log('No data available')
-        }
-      } catch (error) {
-        console.error(error)
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setFirebaseUid(user.uid)
+        fetchPlants()
+      } else {
+        console.log('User not authenticated')
       }
-    }
-    fetchPlants()
+    })
+
+    return () => unsubscribe()
   }, [])
+
+  const fetchPlants = async () => {
+    const dbRef = ref(db)
+    try {
+      const snapshot = await get(child(dbRef, `images`))
+      if (snapshot.exists()) {
+        const data = snapshot.val()
+        const plantData = Object.keys(data).map((plantName) => {
+          const dates = Object.keys(data[plantName]).map((dateTime) => ({
+            dateTime,
+            images: Object.values(data[plantName][dateTime]).flatMap((folder) =>
+              Object.values(folder),
+            ),
+            totalFlowers: Object.values(data[plantName][dateTime])
+              .flatMap((folder) => Object.values(folder))
+              .reduce((total, img) => total + (img.inference_count || 0), 0),
+          }))
+          const overallFlowerCount = dates.reduce((total, date) => total + date.totalFlowers, 0)
+          return { name: plantName, dates, overallFlowerCount }
+        })
+        setPlants(plantData)
+      } else {
+        console.log('No data available')
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
 
   const handleFileChange = (event) => {
     setSelectedFile(event.target.files[0])
@@ -70,18 +82,43 @@ const Dashboard = () => {
 
     const data = new FormData()
     data.append('file', selectedFile)
-    data.append('firebase_uid', 'TFmPB6dgpZZDSbzUCMtGhyWkQ8t2')
-    data.append('secret_key', 'your_shared_secret_key')
+    data.append('firebase_uid', firebaseUid)
+    data.append('secret_key', import.meta.env.VITE_SECRET_KEY)
 
     try {
-      const response = await axios.post('http://localhost:8000/infer-from-upload', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      const response = await axios.post(
+        `${import.meta.env.VITE_SECRET_URL}/infer-from-upload`,
+        data,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      )
       setInferenceResult(response.data) // Set the inference result
     } catch (error) {
       console.error('Error during inference:', error)
     } finally {
       setModalVisible(false) // Close modal after submission
+    }
+  }
+
+  const handleBatchProcess = async (plantName) => {
+    try {
+      const data = {
+        plant_name: plantName,
+        firebase_uid: firebaseUid,
+        secret_key: import.meta.env.VITE_SECRET_KEY,
+      }
+
+      const response = await axios.post(
+        `${import.meta.env.VITE_SECRET_URL}/infer-from-firebase`,
+        data,
+        {
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+      console.log(`Batch processing started for ${plantName}:`, response.data)
+    } catch (error) {
+      console.error(`Error during batch processing for ${plantName}:`, error)
     }
   }
 
@@ -104,11 +141,12 @@ const Dashboard = () => {
               <p>
                 {plants.reduce(
                   (total, plant) =>
-                    total + plant.dates.reduce(
+                    total +
+                    plant.dates.reduce(
                       (dateTotal, date) => dateTotal + (date.images ? date.images.length : 0),
-                      0
+                      0,
                     ),
-                  0
+                  0,
                 )}
               </p>
             </CCardBody>
@@ -141,11 +179,15 @@ const Dashboard = () => {
                     <CAccordionHeader>
                       <span>
                         {new Date(
-                          `${date.dateTime.slice(0, 4)}-${date.dateTime.slice(4, 6)}-${date.dateTime.slice(6, 8)}T${date.dateTime.slice(9, 11)}:${date.dateTime.slice(11, 13)}:${date.dateTime.slice(13)}`
+                          `${date.dateTime.slice(0, 4)}-${date.dateTime.slice(4, 6)}-${date.dateTime.slice(6, 8)}T${date.dateTime.slice(9, 11)}:${date.dateTime.slice(11, 13)}:${date.dateTime.slice(13)}`,
                         ).toLocaleString()}
                       </span>
                       <span className="ms-auto">Total Flowers: {date.totalFlowers}</span>
-                      <CButton color="primary" className="ms-3">
+                      <CButton
+                        color="primary"
+                        className="ms-3"
+                        onClick={() => handleBatchProcess(plant.name)}
+                      >
                         Batch Process
                       </CButton>
                     </CAccordionHeader>
@@ -194,12 +236,19 @@ const Dashboard = () => {
 
       {/* Display Inference Result */}
       {inferenceResult && (
-        <CCard className="mt-4">
-          <CCardBody>
-            <h5>Inference Result</h5>
+        <CModal visible onClose={() => setInferenceResult(null)}>
+          <CModalHeader>
+            <CModalTitle>Inference Result</CModalTitle>
+          </CModalHeader>
+          <CModalBody>
             <pre>{JSON.stringify(inferenceResult, null, 2)}</pre>
-          </CCardBody>
-        </CCard>
+          </CModalBody>
+          <CModalFooter>
+            <CButton color="primary" onClick={() => setInferenceResult(null)}>
+              Close
+            </CButton>
+          </CModalFooter>
+        </CModal>
       )}
     </CContainer>
   )

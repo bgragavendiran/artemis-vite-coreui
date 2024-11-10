@@ -118,8 +118,7 @@ const Login = () => {
                 <CCardBody className="align-content-center">
                   <h2>Welcome to ARTEMIS</h2>
                   <p className="text-light">
-                    Explore our plant tracking app. Get insights, tips, and share your green journey
-                    with the community.
+                    Explore our plant tracking app.
                   </p>
                 </CCardBody>
               </CCard>
