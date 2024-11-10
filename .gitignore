@@ -23,3 +23,12 @@ yarn.lock
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.github/CODE_OF_CONDUCT.md
+.github/COMMIT_CONVENTION.md
+.github/CONTRIBUTING.md
+.github/FUNDING.yml
+.github/ISSUE_TEMPLATE/bug_report.md
+.github/ISSUE_TEMPLATE/feature_request.md
+.github/SUPPORT.md
+.github/workflows/npm.yml
+.github/workflows/stale.yml
