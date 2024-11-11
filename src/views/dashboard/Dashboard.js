@@ -112,19 +112,26 @@ const Dashboard = () => {
   const handleBatchProcess = async (plantName) => {
     setLoading(true)
     addToast(`Batch processing started for ${plantName}`, 'info')
+
     try {
-      const data = {
+      // Construct data for request
+      const data = qs.stringify({
         plant_name: plantName,
         firebase_uid: firebaseUid,
         secret_key: import.meta.env.VITE_SECRET_KEY,
-      }
+      })
+
+      // Make the API request
       const response = await axios.post(
         `${import.meta.env.VITE_SECRET_URL}/infer-from-firebase`,
         data,
         {
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
         },
       )
+
       console.log(`Batch processing completed for ${plantName}:`, response.data)
       addToast(`Batch processing completed for ${plantName}`, 'success')
     } catch (error) {
@@ -136,10 +143,7 @@ const Dashboard = () => {
   }
 
   const addToast = (message, color) => {
-    setToasts((prevToasts) => [
-      ...prevToasts,
-      { message, color, id: Date.now() },
-    ])
+    setToasts((prevToasts) => [...prevToasts, { message, color, id: Date.now() }])
   }
 
   return (
@@ -147,7 +151,9 @@ const Dashboard = () => {
       <CToaster>
         {toasts.map((toast) => (
           <CToast key={toast.id} color={toast.color} autohide={3000}>
-            <CToastHeader closeButton>{toast.color === 'success' ? 'Success' : 'Info'}</CToastHeader>
+            <CToastHeader closeButton>
+              {toast.color === 'success' ? 'Success' : 'Info'}
+            </CToastHeader>
             <CToastBody>{toast.message}</CToastBody>
           </CToast>
         ))}
@@ -185,7 +191,12 @@ const Dashboard = () => {
           <CCard color="success" textColor="white">
             <CCardBody>
               <h5>Single Image Process</h5>
-              <CButton color="light" size="sm" onClick={() => setModalVisible(true)} disabled={loading}>
+              <CButton
+                color="light"
+                size="sm"
+                onClick={() => setModalVisible(true)}
+                disabled={loading}
+              >
                 Single Image Inference
               </CButton>
             </CCardBody>
