@@ -16,9 +16,13 @@ import {
   CModalHeader,
   CModalTitle,
   CFormInput,
+  CToast,
+  CToastBody,
+  CToastHeader,
+  CToaster,
 } from '@coreui/react'
 import axios from 'axios'
-import { db, auth } from 'src/firebase' // Ensure Firebase auth is configured
+import { db, auth } from 'src/firebase'
 import { ref, get, child } from 'firebase/database'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -28,6 +32,8 @@ const Dashboard = () => {
   const [selectedFile, setSelectedFile] = useState(null)
   const [inferenceResult, setInferenceResult] = useState(null)
   const [firebaseUid, setFirebaseUid] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [toasts, setToasts] = useState([])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -38,7 +44,6 @@ const Dashboard = () => {
         console.log('User not authenticated')
       }
     })
-
     return () => unsubscribe()
   }, [])
 
@@ -79,7 +84,7 @@ const Dashboard = () => {
       alert('Please select a file first.')
       return
     }
-
+    setLoading(true)
     const data = new FormData()
     data.append('file', selectedFile)
     data.append('firebase_uid', firebaseUid)
@@ -93,22 +98,26 @@ const Dashboard = () => {
           headers: { 'Content-Type': 'multipart/form-data' },
         },
       )
-      setInferenceResult(response.data) // Set the inference result
+      setInferenceResult(response.data)
+      addToast('Inference completed successfully', 'success')
     } catch (error) {
       console.error('Error during inference:', error)
+      addToast('Error during inference', 'danger')
     } finally {
-      setModalVisible(false) // Close modal after submission
+      setModalVisible(false)
+      setLoading(false)
     }
   }
 
   const handleBatchProcess = async (plantName) => {
+    setLoading(true)
+    addToast(`Batch processing started for ${plantName}`, 'info')
     try {
       const data = {
         plant_name: plantName,
         firebase_uid: firebaseUid,
         secret_key: import.meta.env.VITE_SECRET_KEY,
       }
-
       const response = await axios.post(
         `${import.meta.env.VITE_SECRET_URL}/infer-from-firebase`,
         data,
@@ -116,14 +125,34 @@ const Dashboard = () => {
           headers: { 'Content-Type': 'application/json' },
         },
       )
-      console.log(`Batch processing started for ${plantName}:`, response.data)
+      console.log(`Batch processing completed for ${plantName}:`, response.data)
+      addToast(`Batch processing completed for ${plantName}`, 'success')
     } catch (error) {
       console.error(`Error during batch processing for ${plantName}:`, error)
+      addToast(`Error during batch processing for ${plantName}`, 'danger')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const addToast = (message, color) => {
+    setToasts((prevToasts) => [
+      ...prevToasts,
+      { message, color, id: Date.now() },
+    ])
   }
 
   return (
     <CContainer fluid>
+      <CToaster>
+        {toasts.map((toast) => (
+          <CToast key={toast.id} color={toast.color} autohide={3000}>
+            <CToastHeader closeButton>{toast.color === 'success' ? 'Success' : 'Info'}</CToastHeader>
+            <CToastBody>{toast.message}</CToastBody>
+          </CToast>
+        ))}
+      </CToaster>
+
       {/* Top Row Cards */}
       <CRow className="mb-4">
         <CCol xs={4}>
@@ -156,7 +185,7 @@ const Dashboard = () => {
           <CCard color="success" textColor="white">
             <CCardBody>
               <h5>Single Image Process</h5>
-              <CButton color="light" size="sm" onClick={() => setModalVisible(true)}>
+              <CButton color="light" size="sm" onClick={() => setModalVisible(true)} disabled={loading}>
                 Single Image Inference
               </CButton>
             </CCardBody>
@@ -183,13 +212,6 @@ const Dashboard = () => {
                         ).toLocaleString()}
                       </span>
                       <span className="ms-auto">Total Flowers: {date.totalFlowers}</span>
-                      <CButton
-                        color="primary"
-                        className="ms-3"
-                        onClick={() => handleBatchProcess(plant.name)}
-                      >
-                        Batch Process
-                      </CButton>
                     </CAccordionHeader>
                     <CAccordionBody>
                       <CRow xs={{ cols: 2 }} md={{ cols: 4 }} lg={{ cols: 6 }}>
@@ -207,6 +229,14 @@ const Dashboard = () => {
                           </CCol>
                         ))}
                       </CRow>
+                      <CButton
+                        color="primary"
+                        onClick={() => handleBatchProcess(plant.name)}
+                        disabled={loading}
+                        className="mt-3"
+                      >
+                        Batch Process
+                      </CButton>
                     </CAccordionBody>
                   </CAccordionItem>
                 </CAccordion>
@@ -225,7 +255,7 @@ const Dashboard = () => {
           <CFormInput type="file" onChange={handleFileChange} />
         </CModalBody>
         <CModalFooter>
-          <CButton color="primary" onClick={handleSingleInference}>
+          <CButton color="primary" onClick={handleSingleInference} disabled={loading}>
             Submit
           </CButton>
           <CButton color="secondary" onClick={() => setModalVisible(false)}>
