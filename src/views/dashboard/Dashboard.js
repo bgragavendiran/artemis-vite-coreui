@@ -21,11 +21,13 @@ import {
   CToastBody,
   CToastHeader,
   CToaster,
+  CTooltip,
 } from '@coreui/react'
 import axios from 'axios'
 import { db, auth } from 'src/firebase'
 import { ref, get, child } from 'firebase/database'
 import { onAuthStateChanged } from 'firebase/auth'
+import { FaCheckCircle } from 'react-icons/fa'
 
 const Dashboard = () => {
   const [plants, setPlants] = useState([])
@@ -55,15 +57,22 @@ const Dashboard = () => {
       if (snapshot.exists()) {
         const data = snapshot.val()
         const plantData = Object.keys(data).map((plantName) => {
-          const dates = Object.keys(data[plantName]).map((dateTime) => ({
-            dateTime,
-            images: Object.values(data[plantName][dateTime]).flatMap((folder) =>
+          const dates = Object.keys(data[plantName]).map((dateTime) => {
+            const images = Object.values(data[plantName][dateTime]).flatMap((folder) =>
               Object.values(folder),
-            ),
-            totalFlowers: Object.values(data[plantName][dateTime])
-              .flatMap((folder) => Object.values(folder))
-              .reduce((total, img) => total + (img.inference_count || 0), 0),
-          }))
+            )
+            const totalFlowers = images.reduce(
+              (total, img) => total + (img.inference_count || 0),
+              0,
+            )
+            const allInferred = images.every((img) => img.inference_status === 'completed')
+            return {
+              dateTime,
+              images,
+              totalFlowers,
+              allInferred,
+            }
+          })
           const overallFlowerCount = dates.reduce((total, date) => total + date.totalFlowers, 0)
           return { name: plantName, dates, overallFlowerCount }
         })
@@ -115,14 +124,12 @@ const Dashboard = () => {
     addToast(`Batch processing started for ${plantName}`, 'info')
 
     try {
-      // Construct data for request
       const data = qs.stringify({
         plant_name: plantName,
         firebase_uid: firebaseUid,
         secret_key: import.meta.env.VITE_SECRET_KEY,
       })
 
-      // Make the API request
       const response = await axios.post(
         `${import.meta.env.VITE_SECRET_URL}/infer-from-firebase`,
         data,
@@ -229,22 +236,35 @@ const Dashboard = () => {
                       <CRow xs={{ cols: 2 }} md={{ cols: 4 }} lg={{ cols: 6 }}>
                         {date.images.map((image, imgIndex) => (
                           <CCol key={imgIndex} className="mb-3">
-                            <div className="border rounded overflow-hidden">
-                              <img
-                                loading="lazy"
-                                src={image.url}
-                                alt="Plant"
-                                style={{ width: '100%', height: '100px', objectFit: 'cover' }}
-                              />
-                              <p>Flowers: {image.inference_count || 0}</p>
-                            </div>
+                            <CTooltip
+                              content={
+                                image.inference_status === 'completed' ? 'Inferred' : 'Not Inferred'
+                              }
+                            >
+                              <div className="border rounded overflow-hidden position-relative">
+                                <img
+                                  loading="lazy"
+                                  src={image.url}
+                                  alt="Plant"
+                                  style={{ width: '100%', height: '100px', objectFit: 'cover' }}
+                                />
+                                {image.inference_status === 'completed' && (
+                                  <FaCheckCircle
+                                    color="green"
+                                    size={20}
+                                    style={{ position: 'absolute', top: 5, right: 5 }}
+                                  />
+                                )}
+                                <p>Flowers: {image.inference_count || 0}</p>
+                              </div>
+                            </CTooltip>
                           </CCol>
                         ))}
                       </CRow>
                       <CButton
                         color="primary"
                         onClick={() => handleBatchProcess(plant.name)}
-                        disabled={loading}
+                        disabled={loading || date.allInferred}
                         className="mt-3"
                       >
                         Batch Process
